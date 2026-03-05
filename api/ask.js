@@ -1,20 +1,36 @@
 import OpenAI from "openai";
 
-export default async function handler(req,res){
+export default async function handler(req, res) {
 
-const openai = new OpenAI({
-apiKey: process.env.OPENAI_API_KEY
-});
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
 
-const {prompt} = req.body;
+  try {
 
-const response = await openai.responses.create({
-model:"gpt-5-mini",
-input: prompt
-});
+    const openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY
+    });
 
-res.status(200).json({
-reply: response.output_text
-});
+    const prompt = req.body.prompt;
+
+    const completion = await openai.responses.create({
+      model: "gpt-5-mini",
+      input: prompt
+    });
+
+    res.status(200).json({
+      reply: completion.output_text
+    });
+
+  } catch (err) {
+
+    console.error(err);
+
+    res.status(500).json({
+      error: err.message
+    });
+
+  }
 
 }
