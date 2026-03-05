@@ -18,13 +18,15 @@ export default async function handler(req, res) {
 
     const prompt = body.prompt;
 
-    const completion = await openai.responses.create({
-      model: "gpt-5-mini",
-      input: prompt
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        { role: "user", content: prompt }
+      ]
     });
 
     res.status(200).json({
-      reply: completion.output_text
+      reply: completion.choices[0].message.content
     });
 
   } catch (err) {
