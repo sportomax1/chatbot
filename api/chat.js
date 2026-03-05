@@ -6,16 +6,15 @@ export default async function handler(req) {
     const apiKey = process.env.GOOGLE_GEMINI_API_KEY;
 
     if (!apiKey) {
-      return new Response(JSON.stringify({ reply: "Error: Config missing (API Key)." }), { status: 500 });
+      return new Response(JSON.stringify({ reply: "Error: API Key is missing in Vercel settings." }), { status: 500 });
     }
 
-    // Using Gemini 3 Flash (Latest for March 2026)
+    // UPDATED: Using the March 2026 stable endpoint and Gemini 3 Flash model
     const response = await fetch(`https://generativelanguage.googleapis.com/v1/models/gemini-3-flash-preview:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ 
-            role: "user",
             parts: [{ text: message }] 
         }]
       })
@@ -23,22 +22,19 @@ export default async function handler(req) {
 
     const data = await response.json();
 
-    // Check for API errors (Quota, Key, or Model issues)
     if (data.error) {
-      console.error("Gemini Error:", data.error.message);
-      return new Response(JSON.stringify({ 
-        reply: `AI Error: ${data.error.message}. Please verify your key in Google AI Studio.` 
-      }), { status: 400 });
+      console.error("Gemini API Error:", data.error.message);
+      return new Response(JSON.stringify({ reply: `API Error: ${data.error.message}` }), { status: 400 });
     }
 
-    // Modern Gemini JSON structure check
-    const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || "The AI returned an empty response.";
+    // Extract the text from the new JSON structure
+    const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || "I received an empty response.";
     
     return new Response(JSON.stringify({ reply }), {
       headers: { 'Content-Type': 'application/json' }
     });
 
   } catch (err) {
-    return new Response(JSON.stringify({ reply: "Server error. Check Vercel logs." }), { status: 500 });
+    return new Response(JSON.stringify({ reply: "Server error. Check your Vercel logs." }), { status: 500 });
   }
 }
