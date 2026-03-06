@@ -3,15 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gemini Chat — Debug Mode</title>
+    <title>Gemini Chat — Pizza, Basketball, Mario Kart</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
-        body { background-color: #f3f4f6; }
-        .chat-container { height: calc(100vh - 200px); }
-        .glass { background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(10px); }
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 10px; }
+        body { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; }
+        .chat-container { height: calc(100vh - 220px); }
+        .glass { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
         /* Debug panel */
         #debug-panel {
@@ -32,18 +34,104 @@
         .dbg-net   { color: #ce9178; }
         .dbg-time  { color: #808080; }
         .dbg-json  { color: #9cdcfe; }
+
+        /* Enhanced message styling */
+        .msg-user {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+        .msg-ai {
+            background: white;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        }
+
+        /* Markdown table styling */
+        .msg-ai table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 12px 0;
+            font-size: 13px;
+        }
+        .msg-ai table th {
+            background: #f1f5f9;
+            padding: 8px 12px;
+            text-align: left;
+            font-weight: 600;
+            border: 1px solid #cbd5e1;
+            color: #0f172a;
+        }
+        .msg-ai table td {
+            padding: 8px 12px;
+            border: 1px solid #e2e8f0;
+        }
+        .msg-ai table tr:nth-child(even) {
+            background: #f8fafc;
+        }
+        .msg-ai table tr:hover {
+            background: #f1f5f9;
+        }
+
+        /* Markdown code styling */
+        .msg-ai code {
+            background: #f5f5f5;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            color: #d63384;
+        }
+        .msg-ai pre {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 12px;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 8px 0;
+        }
+        .msg-ai pre code {
+            background: none;
+            color: #f8f8f2;
+            padding: 0;
+        }
+
+        /* Resend button */
+        .resend-btn {
+            display: inline-block;
+            margin-top: 8px;
+            padding: 4px 12px;
+            background: #e2e8f0;
+            border: none;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+            color: #475569;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .resend-btn:hover {
+            background: #cbd5e1;
+            color: #0f172a;
+            transform: scale(1.05);
+        }
+        .resend-btn:active {
+            transform: scale(0.95);
+        }
+
+        /* Emoji support */
+        .emoji { display: inline-block; }
     </style>
 </head>
 <body class="flex flex-col h-screen font-sans">
 
     <!-- HEADER -->
-    <header class="glass border-b border-gray-200 p-4 sticky top-0 z-10">
+    <header class="glass border-b-2 border-purple-200 p-4 sticky top-0 z-10 shadow-lg">
         <div class="max-w-4xl mx-auto flex justify-between items-center">
-            <h1 class="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                Gemini Chat
+            <h1 class="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-600 via-pink-600 to-red-600">
+                🍕 🏀 🏎️ Expert Chat
             </h1>
             <div class="flex items-center gap-3">
-                <span id="status-badge" class="text-xs font-mono text-gray-400 bg-gray-100 px-2 py-1 rounded">idle</span>
+                <span id="status-badge" class="text-xs font-mono text-gray-600 bg-gray-100 px-2 py-1 rounded-full">idle</span>
                 <button id="debug-toggle" onclick="toggleDebug()"
                     class="text-xs font-mono bg-gray-800 text-green-400 px-2 py-1 rounded hover:bg-gray-700 transition">
                     🐛 Debug
@@ -56,16 +144,16 @@
     <div id="debug-panel" class="px-3 py-2 border-b border-gray-700"></div>
 
     <!-- CHAT WINDOW -->
-    <main id="chat-window" class="flex-1 overflow-y-auto p-4 space-y-4 chat-container max-w-4xl mx-auto w-full"></main>
+    <main id="chat-window" class="flex-1 overflow-y-auto p-6 space-y-4 chat-container max-w-4xl mx-auto w-full"></main>
 
     <!-- INPUT -->
-    <footer class="p-4 bg-white border-t border-gray-200 sticky bottom-0">
+    <footer class="glass border-t-2 border-purple-200 p-4 sticky bottom-0 shadow-lg">
         <form id="chat-form" class="max-w-4xl mx-auto flex gap-3">
-            <input type="text" id="user-input" autocomplete="off" placeholder="Type your message…"
-                class="flex-1 p-3 border border-gray-300 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm transition-all">
+            <input type="text" id="user-input" autocomplete="off" placeholder="Ask about pizza 🍕, basketball 🏀, or Mario Kart 64 🏎️…"
+                class="flex-1 p-3 border-2 border-gray-300 rounded-2xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 shadow-sm transition-all">
             <button type="submit" id="send-btn"
-                class="bg-blue-600 text-white px-6 py-2 rounded-2xl font-semibold hover:bg-blue-700 shadow-md transition-all">
-                Send
+                class="bg-gradient-to-r from-purple-600 to-pink-600 text-white px-6 py-2 rounded-2xl font-semibold hover:shadow-lg shadow-md transition-all transform hover:scale-105 active:scale-95">
+                Send 🚀
             </button>
         </form>
     </footer>
@@ -78,6 +166,7 @@
     const statusBadge = document.getElementById('status-badge');
     let debugVisible = true;
     let requestCounter = 0;
+    let lastUserMessage = '';  // Store for resending
 
     function toggleDebug() {
         debugVisible = !debugVisible;
@@ -86,13 +175,12 @@
     }
 
     function dbg(cls, ...parts) {
-        const ts = new Date().toISOString().slice(11, 23);        // HH:MM:SS.mmm
+        const ts = new Date().toISOString().slice(11, 23);
         const line = document.createElement('div');
         line.innerHTML = `<span class="dbg-time">[${ts}]</span> <span class="${cls}">${parts.join(' ')}</span>`;
         debugPanel.appendChild(line);
         debugPanel.scrollTop = debugPanel.scrollHeight;
 
-        // Also mirror to browser DevTools console
         const plain = `[${ts}] ${parts.join(' ')}`;
         if (cls === 'dbg-error') console.error(plain);
         else if (cls === 'dbg-warn') console.warn(plain);
@@ -101,7 +189,7 @@
 
     function setStatus(text, color = 'gray') {
         statusBadge.textContent = text;
-        statusBadge.className = `text-xs font-mono px-2 py-1 rounded bg-${color}-100 text-${color}-700`;
+        statusBadge.className = `text-xs font-mono px-2 py-1 rounded-full bg-${color}-100 text-${color}-700`;
     }
 
     // ============================================================
@@ -118,23 +206,57 @@
         return d.innerHTML;
     }
 
+    function sendMessage(msg) {
+        input.value = msg;
+        form.dispatchEvent(new Event('submit'));
+    }
+
     function appendMessage(text, isUser = false, meta = {}) {
         const wrapper = document.createElement('div');
         wrapper.className = isUser ? 'flex justify-end' : 'flex justify-start';
 
         const div = document.createElement('div');
         div.className = isUser
-            ? 'bg-blue-600 text-white p-4 rounded-2xl rounded-tr-none shadow-sm max-w-[85%]'
-            : 'bg-white border border-gray-200 p-4 rounded-2xl rounded-tl-none shadow-sm max-w-[85%] text-gray-800 prose prose-sm';
+            ? 'msg-user text-white p-4 rounded-3xl rounded-tr-none shadow-lg max-w-[85%] break-words'
+            : 'msg-ai p-4 rounded-3xl rounded-tl-none max-w-[85%] text-gray-800 prose prose-sm max-w-none';
 
-        div.innerHTML = isUser ? escapeHtml(text) : marked.parse(text);
+        // Parse markdown for AI responses
+        let html = isUser ? escapeHtml(text) : marked.parse(text);
+        
+        // Add emoji support for common topics
+        if (!isUser) {
+            html = html
+                .replace(/pizza/gi, '🍕 $&')
+                .replace(/basketball/gi, '🏀 $&')
+                .replace(/mario ?kart/gi, '🏎️ $&')
+                .replace(/nba/gi, '🏀 $&')
+                .replace(/nfl/gi, '🏈 $&');
+        }
+        
+        div.innerHTML = html;
 
-        // Show model badge under AI messages when available
+        // Show model badge + resend button under AI messages
         if (!isUser && meta.model) {
+            const footer = document.createElement('div');
+            footer.className = 'mt-3 flex items-center justify-between';
+            
             const badge = document.createElement('div');
-            badge.className = 'mt-2 text-[10px] font-mono text-gray-400';
-            badge.textContent = `model: ${meta.model}  •  ${meta.latency ?? '?'}ms`;
-            div.appendChild(badge);
+            badge.className = 'text-[10px] font-mono text-gray-500';
+            badge.textContent = `💫 ${meta.model}  •  ${meta.latency ?? '?'}ms`;
+            
+            const resendBtn = document.createElement('button');
+            resendBtn.className = 'resend-btn';
+            resendBtn.textContent = '↩️ Resend';
+            resendBtn.onclick = (e) => {
+                e.preventDefault();
+                if (lastUserMessage) {
+                    sendMessage(lastUserMessage);
+                }
+            };
+            
+            footer.appendChild(badge);
+            footer.appendChild(resendBtn);
+            div.appendChild(footer);
         }
 
         wrapper.appendChild(div);
@@ -150,16 +272,17 @@
         const msg = input.value.trim();
         if (!msg) return;
 
+        lastUserMessage = msg;  // Save for resend
         requestCounter++;
-        const rid = requestCounter;    // local request id
+        const rid = requestCounter;
         dbg('dbg-info', `━━━ REQUEST #${rid} ━━━━━━━━━━━━━━━━━━━━━━━━`);
         dbg('dbg-info', `User message (${msg.length} chars): "${msg.length > 100 ? msg.slice(0, 100) + '…' : msg}"`);
 
         appendMessage(msg, true);
         input.value = '';
         btn.disabled = true;
-        btn.innerText = '…';
-        setStatus('sending…', 'yellow');
+        btn.innerText = '⏳';
+        setStatus('thinking…', 'yellow');
 
         const payload = JSON.stringify({ message: msg });
         dbg('dbg-net', `POST /api/chat  payload=${payload.length} bytes`);
@@ -174,7 +297,6 @@
             const elapsed = Math.round(performance.now() - t0);
             dbg('dbg-net', `Response: HTTP ${res.status} ${res.statusText}  (${elapsed}ms round-trip)`);
 
-            // Log all response headers
             res.headers.forEach((v, k) => dbg('dbg-json', `  header  ${k}: ${v}`));
 
             let data;
@@ -190,7 +312,6 @@
                 return;
             }
 
-            // Log server-side debug trail if present
             if (data.debug && Array.isArray(data.debug)) {
                 dbg('dbg-info', `Server debug trail (${data.debug.length} entries):`);
                 data.debug.forEach((d, i) => {
@@ -219,7 +340,7 @@
             appendMessage('_Error: Could not connect to AI server. Check the debug panel for details._');
         } finally {
             btn.disabled = false;
-            btn.innerText = 'Send';
+            btn.innerText = 'Send 🚀';
             dbg('dbg-info', `━━━ END REQUEST #${rid} ━━━━━━━━━━━━━━━━━━━━`);
         }
     };
@@ -232,7 +353,7 @@
     dbg('dbg-info', `Location: ${location.href}`);
     dbg('dbg-info', `Marked.js version: ${typeof marked !== 'undefined' ? (marked.version || 'loaded') : 'MISSING ⚠️'}`);
     setStatus('ready', 'green');
-    appendMessage("Hey there! I'm your Pizza & Basketball expert 🍕🏀 Ask me anything about those two topics!");
+    appendMessage("🎉 Hey there! I'm your expert on:\n• **Pizza 🍕** (recipes, history, styles, toppings)\n• **Basketball 🏀** (NBA, rules, players, teams)\n• **Mario Kart 64 🏎️** (characters, tracks, strategies)\n\nAsk me anything about these topics!");
     </script>
 </body>
 </html>
