@@ -284,14 +284,6 @@
                 🍕 🏀 🏎️ Expert Chat
             </h1>
             <div class="flex items-center gap-2">
-                <button id="save-btn" onclick="saveConversation()" 
-                    class="text-xs font-mono bg-green-600 text-white px-2 py-1 rounded hover:bg-green-700 transition">
-                    💾 Save
-                </button>
-                <button id="load-btn" onclick="toggleLoadPanel()" 
-                    class="text-xs font-mono bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 transition">
-                    📂 Load
-                </button>
                 <button id="new-btn" onclick="newConversation()" 
                     class="text-xs font-mono bg-purple-600 text-white px-2 py-1 rounded hover:bg-purple-700 transition">
                     ✨ New
@@ -309,12 +301,12 @@
         </div>
     </header>
 
-    <!-- LOAD PANEL (hidden by default) -->
-    <div id="load-panel" class="hidden bg-white border-b border-gray-200 p-4 max-h-48 overflow-y-auto">
+    <!-- LOAD PANEL (hidden) -->
+    <div id="load-panel" class="hidden bg-white border-b border-gray-200 p-4 max-h-48 overflow-y-auto" style="display:none;">
         <div class="max-w-4xl mx-auto">
-            <h3 class="font-semibold mb-2">📂 Load Conversation</h3>
+            <h3 class="font-semibold mb-2">📂 Load Conversation (disabled)</h3>
             <div id="conversations-list" class="space-y-2">
-                <p class="text-sm text-gray-500">Loading conversations...</p>
+                <p class="text-sm text-gray-500">Conversation saving is disabled. Use the 📊 Data button instead to browse and edit your Supabase tables.</p>
             </div>
         </div>
     </div>
@@ -910,8 +902,7 @@
                     latency: data.latency_ms ?? elapsed,
                 });
                 
-                // Auto-save after each response
-                saveConversation();
+                // Note: conversation auto-save disabled — use Data browser for your own table CRUD
                 
                 // Show context-aware suggestions based on the user's message
                 const detectedTopic = detectTopic(msg);
