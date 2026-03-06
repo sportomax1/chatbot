@@ -94,6 +94,20 @@ export default async function handler(req) {
     let lastError = '';
     const PER_CALL_TIMEOUT_MS = 8000;    // abort any single API call after 8s
 
+    // ── System instruction: restrict topics ──
+    const systemInstruction = {
+      parts: [{ text:
+        `You are a friendly expert assistant that ONLY answers questions about two topics: PIZZA and BASKETBALL.
+
+Rules you MUST follow:
+1. If the user's message is about pizza (recipes, history, toppings, restaurants, styles, dough, etc.) — answer enthusiastically and in detail.
+2. If the user's message is about basketball (NBA, players, rules, history, scores, teams, college ball, etc.) — answer enthusiastically and in detail.
+3. If the user's message is a casual greeting (hi, hello, hey, what's up) — respond warmly and tell them you're a pizza & basketball expert, then ask what they'd like to know about those topics.
+4. For ANY other topic — politely decline and say: "I'm a pizza & basketball specialist! 🍕🏀 Ask me anything about those two topics and I'll give you an amazing answer."
+5. Never break character. Never answer off-topic questions even if the user insists.`
+      }]
+    };
+
     // ── Try each model+version combo ──
     for (let i = 0; i < modelEntries.length; i++) {
       const [model, apiVersion] = modelEntries[i];
@@ -105,7 +119,10 @@ export default async function handler(req) {
         const apiUrl = `https://generativelanguage.googleapis.com/${apiVersion}/models/${model}:generateContent?key=${apiKey}`;
         log.debug(`[${requestId}] POST …/${apiVersion}/models/${model}:generateContent?key=***`);
 
-        const payload = { contents: [{ parts: [{ text: message }] }] };
+        const payload = {
+          system_instruction: systemInstruction,
+          contents: [{ parts: [{ text: message }] }],
+        };
 
         // AbortController to enforce per-call timeout
         const controller = new AbortController();
