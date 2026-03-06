@@ -3,91 +3,236 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gemini 3 Chat</title>
+    <title>Gemini Chat — Debug Mode</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
         body { background-color: #f3f4f6; }
-        .chat-container { height: calc(100vh - 140px); }
+        .chat-container { height: calc(100vh - 200px); }
         .glass { background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(10px); }
-        /* Professional scrollbar */
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 10px; }
+
+        /* Debug panel */
+        #debug-panel {
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            line-height: 1.45;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            max-height: 260px;
+            overflow-y: auto;
+            transition: max-height 0.3s ease;
+        }
+        #debug-panel.collapsed { max-height: 0; padding: 0 12px; }
+        .dbg-info  { color: #569cd6; }
+        .dbg-ok    { color: #6a9955; }
+        .dbg-warn  { color: #dcdcaa; }
+        .dbg-error { color: #f44747; }
+        .dbg-net   { color: #ce9178; }
+        .dbg-time  { color: #808080; }
+        .dbg-json  { color: #9cdcfe; }
     </style>
 </head>
 <body class="flex flex-col h-screen font-sans">
 
+    <!-- HEADER -->
     <header class="glass border-b border-gray-200 p-4 sticky top-0 z-10">
         <div class="max-w-4xl mx-auto flex justify-between items-center">
-            <h1 class="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Gemini 3 MVP</h1>
-            <span class="text-xs font-mono text-gray-400 bg-gray-100 px-2 py-1 rounded">v3.1-flash</span>
+            <h1 class="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                Gemini Chat
+            </h1>
+            <div class="flex items-center gap-3">
+                <span id="status-badge" class="text-xs font-mono text-gray-400 bg-gray-100 px-2 py-1 rounded">idle</span>
+                <button id="debug-toggle" onclick="toggleDebug()"
+                    class="text-xs font-mono bg-gray-800 text-green-400 px-2 py-1 rounded hover:bg-gray-700 transition">
+                    🐛 Debug
+                </button>
+            </div>
         </div>
     </header>
 
-    <main id="chat-window" class="flex-1 overflow-y-auto p-4 space-y-4 chat-container max-w-4xl mx-auto w-full">
-        </main>
+    <!-- DEBUG PANEL (collapsible) -->
+    <div id="debug-panel" class="px-3 py-2 border-b border-gray-700"></div>
 
+    <!-- CHAT WINDOW -->
+    <main id="chat-window" class="flex-1 overflow-y-auto p-4 space-y-4 chat-container max-w-4xl mx-auto w-full"></main>
+
+    <!-- INPUT -->
     <footer class="p-4 bg-white border-t border-gray-200 sticky bottom-0">
         <form id="chat-form" class="max-w-4xl mx-auto flex gap-3">
-            <input type="text" id="user-input" autocomplete="off" placeholder="Type your message..." 
+            <input type="text" id="user-input" autocomplete="off" placeholder="Type your message…"
                 class="flex-1 p-3 border border-gray-300 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm transition-all">
-            <button type="submit" id="send-btn" class="bg-blue-600 text-white px-6 py-2 rounded-2xl font-semibold hover:bg-blue-700 shadow-md transition-all">
+            <button type="submit" id="send-btn"
+                class="bg-blue-600 text-white px-6 py-2 rounded-2xl font-semibold hover:bg-blue-700 shadow-md transition-all">
                 Send
             </button>
         </form>
     </footer>
 
     <script>
-        const form = document.getElementById('chat-form');
-        const input = document.getElementById('user-input');
-        const chatWindow = document.getElementById('chat-window');
-        const btn = document.getElementById('send-btn');
+    // ============================================================
+    //  DEBUG LOGGER — shows everything in the on-page debug panel
+    // ============================================================
+    const debugPanel = document.getElementById('debug-panel');
+    const statusBadge = document.getElementById('status-badge');
+    let debugVisible = true;
+    let requestCounter = 0;
 
-        function appendMessage(text, isUser = false) {
-            const wrapper = document.createElement('div');
-            wrapper.className = isUser ? "flex justify-end" : "flex justify-start";
-            
-            const div = document.createElement('div');
-            div.className = isUser 
-                ? "bg-blue-600 text-white p-4 rounded-2xl rounded-tr-none shadow-sm max-w-[85%]" 
-                : "bg-white border border-gray-200 p-4 rounded-2xl rounded-tl-none shadow-sm max-w-[85%] text-gray-800 prose prose-sm";
-            
-            // Parse Markdown for AI, plain text for User
-            div.innerHTML = isUser ? text : marked.parse(text);
-            
-            wrapper.appendChild(div);
-            chatWindow.appendChild(wrapper);
-            chatWindow.scrollTop = chatWindow.scrollHeight;
+    function toggleDebug() {
+        debugVisible = !debugVisible;
+        debugPanel.classList.toggle('collapsed', !debugVisible);
+        document.getElementById('debug-toggle').textContent = debugVisible ? '🐛 Debug' : '🐛 Show';
+    }
+
+    function dbg(cls, ...parts) {
+        const ts = new Date().toISOString().slice(11, 23);        // HH:MM:SS.mmm
+        const line = document.createElement('div');
+        line.innerHTML = `<span class="dbg-time">[${ts}]</span> <span class="${cls}">${parts.join(' ')}</span>`;
+        debugPanel.appendChild(line);
+        debugPanel.scrollTop = debugPanel.scrollHeight;
+
+        // Also mirror to browser DevTools console
+        const plain = `[${ts}] ${parts.join(' ')}`;
+        if (cls === 'dbg-error') console.error(plain);
+        else if (cls === 'dbg-warn') console.warn(plain);
+        else console.log(`%c${plain}`, cls === 'dbg-ok' ? 'color:green' : cls === 'dbg-net' ? 'color:orange' : 'color:deepskyblue');
+    }
+
+    function setStatus(text, color = 'gray') {
+        statusBadge.textContent = text;
+        statusBadge.className = `text-xs font-mono px-2 py-1 rounded bg-${color}-100 text-${color}-700`;
+    }
+
+    // ============================================================
+    //  CHAT UI
+    // ============================================================
+    const form = document.getElementById('chat-form');
+    const input = document.getElementById('user-input');
+    const chatWindow = document.getElementById('chat-window');
+    const btn = document.getElementById('send-btn');
+
+    function escapeHtml(s) {
+        const d = document.createElement('div');
+        d.textContent = s;
+        return d.innerHTML;
+    }
+
+    function appendMessage(text, isUser = false, meta = {}) {
+        const wrapper = document.createElement('div');
+        wrapper.className = isUser ? 'flex justify-end' : 'flex justify-start';
+
+        const div = document.createElement('div');
+        div.className = isUser
+            ? 'bg-blue-600 text-white p-4 rounded-2xl rounded-tr-none shadow-sm max-w-[85%]'
+            : 'bg-white border border-gray-200 p-4 rounded-2xl rounded-tl-none shadow-sm max-w-[85%] text-gray-800 prose prose-sm';
+
+        div.innerHTML = isUser ? escapeHtml(text) : marked.parse(text);
+
+        // Show model badge under AI messages when available
+        if (!isUser && meta.model) {
+            const badge = document.createElement('div');
+            badge.className = 'mt-2 text-[10px] font-mono text-gray-400';
+            badge.textContent = `model: ${meta.model}  •  ${meta.latency ?? '?'}ms`;
+            div.appendChild(badge);
         }
 
-        form.onsubmit = async (e) => {
-            e.preventDefault();
-            const msg = input.value.trim();
-            if (!msg) return;
+        wrapper.appendChild(div);
+        chatWindow.appendChild(wrapper);
+        chatWindow.scrollTop = chatWindow.scrollHeight;
+    }
 
-            appendMessage(msg, true);
-            input.value = '';
-            btn.disabled = true;
-            btn.innerText = '...';
+    // ============================================================
+    //  FORM SUBMIT — with full debug instrumentation
+    // ============================================================
+    form.onsubmit = async (e) => {
+        e.preventDefault();
+        const msg = input.value.trim();
+        if (!msg) return;
+
+        requestCounter++;
+        const rid = requestCounter;    // local request id
+        dbg('dbg-info', `━━━ REQUEST #${rid} ━━━━━━━━━━━━━━━━━━━━━━━━`);
+        dbg('dbg-info', `User message (${msg.length} chars): "${msg.length > 100 ? msg.slice(0, 100) + '…' : msg}"`);
+
+        appendMessage(msg, true);
+        input.value = '';
+        btn.disabled = true;
+        btn.innerText = '…';
+        setStatus('sending…', 'yellow');
+
+        const payload = JSON.stringify({ message: msg });
+        dbg('dbg-net', `POST /api/chat  payload=${payload.length} bytes`);
+
+        const t0 = performance.now();
+        try {
+            const res = await fetch('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: payload,
+            });
+            const elapsed = Math.round(performance.now() - t0);
+            dbg('dbg-net', `Response: HTTP ${res.status} ${res.statusText}  (${elapsed}ms round-trip)`);
+
+            // Log all response headers
+            res.headers.forEach((v, k) => dbg('dbg-json', `  header  ${k}: ${v}`));
+
+            let data;
+            const rawText = await res.text();
+            dbg('dbg-json', `Raw body (${rawText.length} chars): ${rawText.slice(0, 400)}${rawText.length > 400 ? '…' : ''}`);
 
             try {
-                const res = await fetch('/api/chat', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: msg })
-                });
-                const data = await res.json();
-                appendMessage(data.reply);
-            } catch (err) {
-                appendMessage("_Error: Could not connect to AI server._");
-            } finally {
-                btn.disabled = false;
-                btn.innerText = 'Send';
+                data = JSON.parse(rawText);
+            } catch (jsonErr) {
+                dbg('dbg-error', `JSON parse failed: ${jsonErr.message}`);
+                appendMessage(`_Error: server returned non-JSON response (HTTP ${res.status})._`);
+                setStatus('JSON error', 'red');
+                return;
             }
-        };
 
-        // Initial Greeting
-        appendMessage("Hello! I am Gemini 3 Flash. How can I help you today?");
+            // Log server-side debug trail if present
+            if (data.debug && Array.isArray(data.debug)) {
+                dbg('dbg-info', `Server debug trail (${data.debug.length} entries):`);
+                data.debug.forEach((d, i) => {
+                    dbg('dbg-json', `  [${i}] ${JSON.stringify(d)}`);
+                });
+            }
+
+            if (res.ok) {
+                dbg('dbg-ok', `✅ Reply OK  model=${data.model_used || '?'}  reply_len=${(data.reply||'').length}  latency=${data.latency_ms ?? elapsed}ms`);
+                setStatus(`✓ ${data.model_used || 'ok'}`, 'green');
+                appendMessage(data.reply || '(empty reply)', false, {
+                    model: data.model_used,
+                    latency: data.latency_ms ?? elapsed,
+                });
+            } else {
+                dbg('dbg-error', `❌ HTTP ${res.status} — ${data.reply || rawText.slice(0, 200)}`);
+                setStatus(`error ${res.status}`, 'red');
+                appendMessage(`_Error (${res.status}): ${data.reply || 'Unknown server error.'}_`);
+            }
+
+        } catch (err) {
+            const elapsed = Math.round(performance.now() - t0);
+            dbg('dbg-error', `🔥 Network/fetch exception after ${elapsed}ms: ${err.message}`);
+            dbg('dbg-error', `Stack: ${err.stack}`);
+            setStatus('network error', 'red');
+            appendMessage('_Error: Could not connect to AI server. Check the debug panel for details._');
+        } finally {
+            btn.disabled = false;
+            btn.innerText = 'Send';
+            dbg('dbg-info', `━━━ END REQUEST #${rid} ━━━━━━━━━━━━━━━━━━━━`);
+        }
+    };
+
+    // ============================================================
+    //  STARTUP
+    // ============================================================
+    dbg('dbg-ok', '🚀 Chat app loaded');
+    dbg('dbg-info', `User-Agent: ${navigator.userAgent}`);
+    dbg('dbg-info', `Location: ${location.href}`);
+    dbg('dbg-info', `Marked.js version: ${typeof marked !== 'undefined' ? (marked.version || 'loaded') : 'MISSING ⚠️'}`);
+    setStatus('ready', 'green');
+    appendMessage("Hello! I'm Gemini Flash. How can I help you today?");
     </script>
 </body>
 </html>
