@@ -47,52 +47,64 @@ export default async function handler(req) {
 
     // ── LIST ALL TABLES ──
     if (action === 'LIST_TABLES') {
-      log.info(`[${rid}] Listing tables via information schema`);
+      log.info(`[${rid}] Listing tables`);
       
-      // Query Supabase information_schema using the REST API
-      const url = `${supabaseUrl}/rest/v1/information_schema.tables?select=table_name&table_schema=eq.public&order=table_name.asc`;
+      // Check for SUPABASE_TABLES environment variable (comma-separated list)
+      const tablesEnv = process.env.SUPABASE_TABLES;
       
-      log.debug(`[${rid}] Fetching: ${url}`);
-      
-      const res = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${supabaseKey}`,
-          'Accept': 'application/json',
-          'apikey': supabaseKey,  // Some endpoints require apikey header
-        },
-      });
-      
-      if (!res.ok) {
-        const errText = await res.text();
-        log.warn(`[${rid}] information_schema query failed (${res.status}), trying alternate method`);
-        
-        // Fallback: return empty list with instructions
-        return new Response(JSON.stringify({
-          ok: true,
-          tables: [],
-          message: 'To see your tables, use the Data browser manually or configure SUPABASE_TABLES environment variable',
-        }), { headers: { 'Content-Type': 'application/json' } });
+      if (tablesEnv) {
+        const tables = tablesEnv.split(',').map(t => t.trim()).filter(Boolean);
+        log.ok(`[${rid}] Found ${tables.length} tables from SUPABASE_TABLES env`);
+        return new Response(JSON.stringify({ ok: true, tables }), {
+          headers: { 'Content-Type': 'application/json' }
+        });
       }
       
+      // Try REST API as fallback (may not work with anon key)
       try {
-        const tables = await res.json();
-        const tableNames = Array.isArray(tables) ? tables.map(t => t.table_name).filter(Boolean) : [];
-        log.ok(`[${rid}] Found ${tableNames.length} tables`);
-        return new Response(JSON.stringify({ ok: true, tables: tableNames }), {
-          headers: { 'Content-Type': 'application/json' }
+        const url = `${supabaseUrl}/rest/v1/information_schema.tables?select=table_name&table_schema=eq.public&order=table_name.asc`;
+        const res = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${supabaseKey}`,
+            'Accept': 'application/json',
+            'apikey': supabaseKey,
+          },
         });
-      } catch (parseErr) {
-        log.error(`[${rid}] Parse error:`, parseErr.message);
-        return new Response(JSON.stringify({ ok: true, tables: [] }), {
-          headers: { 'Content-Type': 'application/json' }
-        });
+        
+        if (res.ok) {
+          const tables = await res.json();
+          const tableNames = Array.isArray(tables) ? tables.map(t => t.table_name).filter(Boolean) : [];
+          log.ok(`[${rid}] Found ${tableNames.length} tables via REST API`);
+          return new Response(JSON.stringify({ ok: true, tables: tableNames }), {
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+      } catch (err) {
+        log.debug(`[${rid}] REST API query failed: ${err.message}`);
       }
+      
+      // Fallback: return instructions
+      log.warn(`[${rid}] Table discovery failed - set SUPABASE_TABLES env var`);
+      return new Response(JSON.stringify({
+        ok: true,
+        tables: [],
+        message: 'Set SUPABASE_TABLES env var (comma-separated) or enter table name manually'
+      }), { headers: { 'Content-Type': 'application/json' } });
     }
 
     // ── SEARCH / READ ──
     if (action === 'READ' || action === 'SEARCH') {
       if (!table) throw new Error('table required');
+      
+      // Sanitize table name (alphanumeric, underscore, hyphen only)
+      if (!/^[a-zA-Z0-9_-]+$/.test(table)) {
+        log.error(`[${rid}] Invalid table name: ${table}`);
+        return new Response(JSON.stringify({ ok: false, error: `Invalid table name: "${table}"` }), { 
+          status: 400, 
+          headers: { 'Content-Type': 'application/json' } 
+        });
+      }
       
       // Build query string
       let queryStr = `${supabaseUrl}/rest/v1/${table}?select=*`;
@@ -102,9 +114,9 @@ export default async function handler(req) {
         Object.keys(query).forEach(key => {
           const val = query[key];
           if (typeof val === 'string') {
-            queryStr += `&${key}=ilike.*${val}*`;  // case-insensitive contains
+            queryStr += `&${key}=ilike.*${encodeURIComponent(val)}*`;  // case-insensitive contains
           } else {
-            queryStr += `&${key}=eq.${val}`;
+            queryStr += `&${key}=eq.${encodeURIComponent(val)}`;
           }
         });
       }
@@ -114,20 +126,36 @@ export default async function handler(req) {
       
       log.info(`[${rid}] READ ${table} with query:`, query);
       const res = await fetch(queryStr, {
-        headers: { 'Authorization': `Bearer ${supabaseKey}`, 'Accept': 'application/json' },
+        headers: { 
+          'Authorization': `Bearer ${supabaseKey}`, 
+          'Accept': 'application/json',
+          'apikey': supabaseKey,
+        },
       });
       
       if (!res.ok) {
         const err = await res.text();
-        log.error(`[${rid}] Query failed:`, err);
-        return new Response(JSON.stringify({ ok: false, error: err }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+        log.error(`[${rid}] Query failed (${res.status}):`, err.slice(0, 200));
+        const errMsg = err.includes('relation') ? `Table "${table}" not found. Check table name.` : err;
+        return new Response(JSON.stringify({ ok: false, error: errMsg }), { 
+          status: res.status || 400, 
+          headers: { 'Content-Type': 'application/json' } 
+        });
       }
       
-      const rows = await res.json();
-      log.ok(`[${rid}] Found ${rows.length} rows`);
-      return new Response(JSON.stringify({ ok: true, rows, count: rows.length }), {
-        headers: { 'Content-Type': 'application/json' }
-      });
+      try {
+        const rows = await res.json();
+        log.ok(`[${rid}] Found ${rows.length} rows in ${table}`);
+        return new Response(JSON.stringify({ ok: true, rows, count: rows.length }), {
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch (parseErr) {
+        log.error(`[${rid}] Parse error:`, parseErr.message);
+        return new Response(JSON.stringify({ ok: false, error: 'Response parse error' }), { 
+          status: 400, 
+          headers: { 'Content-Type': 'application/json' } 
+        });
+      }
     }
 
     // ── CREATE ──

@@ -15,6 +15,12 @@ In Vercel Dashboard → your project → Settings → Environment Variables, add
 ```
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=your-anon-key-here
+SUPABASE_TABLES=table1,table2,table3
+```
+
+**SUPABASE_TABLES** — comma-separated list of your table names. This enables auto-discovery in the data browser. Example:
+```
+SUPABASE_TABLES=users,products,orders,invoices
 ```
 
 ### 3. Redeploy

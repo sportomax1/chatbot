@@ -624,19 +624,26 @@
         
         if (data.tables.length === 0) {
           listEl.innerHTML = `
-            <h4 style="margin: 0 0 12px 0; font-size: 13px; color: #475569;">No Tables Found</h4>
-            <p style="font-size: 12px; color: #6b7280; margin-bottom: 12px;">Enter table name manually:</p>
-            <input type="text" id="manual-table-input" placeholder="e.g., users, products, orders" style="width: 90%; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 12px;">
-            <button onclick="loadTabDataManual()" style="width: 90%; padding: 6px 12px; margin-top: 8px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Load Table</button>
+            <h4 style="margin: 0 0 8px 0; font-size: 13px; color: #475569; font-weight: 600;">📋 No Tables Found</h4>
+            <p style="font-size: 11px; color: #6b7280; margin: 0 0 12px 0; line-height: 1.5;">
+              To auto-discover your tables, set the <code style="background: #f3f4f6; padding: 2px 4px; border-radius: 2px;">SUPABASE_TABLES</code> environment variable in Vercel:
+            </p>
+            <p style="font-size: 11px; color: #1f2937; background: #f9fafb; padding: 8px; border-radius: 4px; margin: 0 0 12px 0; font-family: monospace;">
+              SUPABASE_TABLES=users,products,orders
+            </p>
+            <p style="font-size: 11px; color: #6b7280; margin: 0 0 10px 0;">Or enter table name manually:</p>
+            <input type="text" id="manual-table-input" placeholder="e.g., users, products, orders" style="width: 100%; padding: 6px 8px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 12px; box-sizing: border-box;">
+            <button onclick="loadTabDataManual()" style="width: 100%; padding: 6px 12px; margin-top: 8px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500;">Load Table</button>
           `;
           return;
         }
         
-        listEl.innerHTML = '<h4 style="margin: 0 0 12px 0; font-size: 13px; color: #475569;">Your Tables:</h4>';
+        listEl.innerHTML = '<h4 style="margin: 0 0 8px 0; font-size: 13px; color: #475569; font-weight: 600;">📋 Your Tables:</h4>';
         data.tables.forEach(table => {
           const btn = document.createElement('button');
           btn.className = 'table-btn';
           btn.textContent = table;
+          btn.style.cursor = 'pointer';
           btn.onclick = () => loadTabData(table);
           listEl.appendChild(btn);
         });
@@ -644,10 +651,14 @@
         console.error('Failed to load tables:', err);
         const listEl = document.getElementById('table-list');
         listEl.innerHTML = `
-          <h4 style="color: #ef4444; margin: 0 0 12px 0;">⚠️ Error Loading Tables</h4>
-          <p style="font-size: 12px; color: #6b7280; margin-bottom: 12px;">Enter table name manually:</p>
-          <input type="text" id="manual-table-input" placeholder="e.g., users, products, orders" style="width: 90%; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 12px;">
-          <button onclick="loadTabDataManual()" style="width: 90%; padding: 6px 12px; margin-top: 8px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Load Table</button>
+          <h4 style="color: #ef4444; margin: 0 0 8px 0; font-weight: 600;">⚠️ Error Loading Tables</h4>
+          <p style="font-size: 11px; color: #6b7280; margin: 0 0 10px 0;">To see ALL tables, add to Vercel environment variables:</p>
+          <p style="font-size: 11px; color: #1f2937; background: #f9fafb; padding: 8px; border-radius: 4px; margin: 0 0 12px 0; font-family: monospace;">
+            SUPABASE_TABLES=table1,table2,table3
+          </p>
+          <p style="font-size: 11px; color: #6b7280; margin: 0 0 10px 0;">Or enter table name manually:</p>
+          <input type="text" id="manual-table-input" placeholder="e.g., users" style="width: 100%; padding: 6px 8px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 12px; box-sizing: border-box;">
+          <button onclick="loadTabDataManual()" style="width: 100%; padding: 6px 12px; margin-top: 8px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500;">Load Table</button>
         `;
       }
     }
@@ -667,13 +678,24 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'READ', table, limit: 100 }),
         });
+        
         const data = await res.json();
-        if (data.ok && data.rows) {
+        
+        if (!data.ok) {
+          alert(`❌ Error: ${data.error}`);
+          console.error('Load table error:', data.error);
+          return;
+        }
+        
+        if (data.rows && data.rows.length > 0) {
           displayTableData(table, data.rows);
           document.getElementById('table-list').parentElement.style.display = 'none';
           document.getElementById('table-view').style.display = 'block';
+        } else {
+          alert(`✓ Table "${table}" loaded but is empty or does not exist.`);
         }
       } catch (err) {
+        alert(`❌ Network error: ${err.message}`);
         console.error('Failed to load table data:', err);
       }
     }
