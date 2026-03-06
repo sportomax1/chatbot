@@ -154,6 +154,123 @@
             transform: translateY(0);
         }
 
+        /* Data Browser Panel */
+        #data-browser {
+            position: fixed;
+            right: 0;
+            top: 0;
+            width: 400px;
+            height: 100vh;
+            background: white;
+            box-shadow: -2px 0 15px rgba(0, 0, 0, 0.1);
+            transform: translateX(400px);
+            transition: transform 0.3s ease;
+            z-index: 1000;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+        #data-browser.open {
+            transform: translateX(0);
+        }
+        #data-browser-header {
+            padding: 16px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-shrink: 0;
+        }
+        #data-browser-header h3 {
+            margin: 0;
+            font-size: 16px;
+        }
+        #data-browser-close {
+            background: rgba(255, 255, 255, 0.3);
+            border: none;
+            color: white;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 18px;
+        }
+        #data-browser-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+        }
+        .table-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .table-btn {
+            padding: 10px 12px;
+            background: #f1f5f9;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            cursor: pointer;
+            text-align: left;
+            font-weight: 500;
+            color: #475569;
+            transition: all 0.2s;
+        }
+        .table-btn:hover {
+            background: #e2e8f0;
+            border-color: #667eea;
+            color: #667eea;
+        }
+        .table-btn.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-color: #667eea;
+        }
+        #data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+        #data-table thead {
+            background: #f1f5f9;
+        }
+        #data-table th {
+            padding: 8px;
+            text-align: left;
+            border: 1px solid #cbd5e1;
+            font-weight: 600;
+        }
+        #data-table td {
+            padding: 8px;
+            border: 1px solid #e2e8f0;
+            word-break: break-word;
+            max-width: 100px;
+        }
+        #data-table tr:hover {
+            background: #f8fafc;
+        }
+        .data-search {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+        .data-search input {
+            flex: 1;
+            padding: 8px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 12px;
+        }
+        .data-search button {
+            padding: 6px 12px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
         /* Emoji support */
         .emoji { display: inline-block; }
     </style>
@@ -162,12 +279,28 @@
 
     <!-- HEADER -->
     <header class="glass border-b-2 border-purple-200 p-4 sticky top-0 z-10 shadow-lg">
-        <div class="max-w-4xl mx-auto flex justify-between items-center">
+        <div class="max-w-4xl mx-auto flex justify-between items-center gap-4">
             <h1 class="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-600 via-pink-600 to-red-600">
                 🍕 🏀 🏎️ Expert Chat
             </h1>
-            <div class="flex items-center gap-3">
+            <div class="flex items-center gap-2">
+                <button id="save-btn" onclick="saveConversation()" 
+                    class="text-xs font-mono bg-green-600 text-white px-2 py-1 rounded hover:bg-green-700 transition">
+                    💾 Save
+                </button>
+                <button id="load-btn" onclick="toggleLoadPanel()" 
+                    class="text-xs font-mono bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 transition">
+                    📂 Load
+                </button>
+                <button id="new-btn" onclick="newConversation()" 
+                    class="text-xs font-mono bg-purple-600 text-white px-2 py-1 rounded hover:bg-purple-700 transition">
+                    ✨ New
+                </button>
                 <span id="status-badge" class="text-xs font-mono text-gray-600 bg-gray-100 px-2 py-1 rounded-full">idle</span>
+                <button id="data-browser-toggle" onclick="toggleDataBrowser()"
+                    class="text-xs font-mono bg-orange-600 text-white px-2 py-1 rounded hover:bg-orange-700 transition">
+                    📊 Data
+                </button>
                 <button id="debug-toggle" onclick="toggleDebug()"
                     class="text-xs font-mono bg-gray-800 text-green-400 px-2 py-1 rounded hover:bg-gray-700 transition">
                     🐛 Debug
@@ -176,11 +309,43 @@
         </div>
     </header>
 
+    <!-- LOAD PANEL (hidden by default) -->
+    <div id="load-panel" class="hidden bg-white border-b border-gray-200 p-4 max-h-48 overflow-y-auto">
+        <div class="max-w-4xl mx-auto">
+            <h3 class="font-semibold mb-2">📂 Load Conversation</h3>
+            <div id="conversations-list" class="space-y-2">
+                <p class="text-sm text-gray-500">Loading conversations...</p>
+            </div>
+        </div>
+    </div>
+
     <!-- DEBUG PANEL (collapsible) -->
     <div id="debug-panel" class="px-3 py-2 border-b border-gray-700"></div>
 
     <!-- CHAT WINDOW -->
     <main id="chat-window" class="flex-1 overflow-y-auto p-6 space-y-4 chat-container max-w-4xl mx-auto w-full"></main>
+
+    <!-- DATA BROWSER PANEL (slide-in from right) -->
+    <div id="data-browser">
+        <div id="data-browser-header">
+            <h3>📊 Supabase Data Browser</h3>
+            <button id="data-browser-close" onclick="toggleDataBrowser()">✕</button>
+        </div>
+        <div id="data-browser-content">
+            <div id="table-list" class="table-list"></div>
+            <div id="table-view" style="display:none;">
+                <button onclick="backToTableList()" style="margin-bottom: 12px; padding: 8px 12px; background: #e2e8f0; border: none; border-radius: 6px; cursor: pointer;">← Back</button>
+                <div class="data-search">
+                    <input type="text" id="search-input" placeholder="Search...">
+                    <button onclick="searchTable()">🔍 Search</button>
+                </div>
+                <table id="data-table"></table>
+                <div id="table-controls" style="margin-top: 12px;">
+                    <button onclick="newRecord()" style="padding: 8px 12px; background: #10b981; color: white; border: none; border-radius: 6px; cursor: pointer;">+ New Row</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- INPUT & SUGGESTIONS -->
     <footer class="glass border-t-2 border-purple-200 p-4 sticky bottom-0 shadow-lg">
@@ -201,6 +366,161 @@
     </footer>
 
     <script>
+    // ============================================================
+    //  SUPABASE INTEGRATION — Save/Load conversations
+    // ============================================================
+    let currentConversationId = generateUID();
+    let conversationMessages = [];  // [{role: 'user'|'ai', content: '', topic: ''}]
+
+    const _ts = () => new Date().toISOString();
+
+    function generateUID() {
+      return 'conv_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9);
+    }
+
+    async function saveConversation(title = null) {
+      if (conversationMessages.length === 0) {
+        alert('No messages to save!');
+        return;
+      }
+
+      dbg('dbg-info', `💾 Saving conversation ${currentConversationId}...`);
+      try {
+        const res = await fetch('/api/storage?action=save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            conversationId: currentConversationId,
+            messages: conversationMessages,
+            topic: lastTopic,
+            title: title || `Chat ${new Date().toLocaleString()}`,
+          }),
+        });
+
+        const data = await res.json();
+        if (data.ok) {
+          dbg('dbg-ok', `✅ Conversation saved!`);
+          alert('✅ Conversation saved to Supabase!');
+        } else {
+          dbg('dbg-error', `❌ Save failed: ${data.error}`);
+          alert(`❌ Save failed: ${data.error}`);
+        }
+      } catch (err) {
+        dbg('dbg-error', `Save exception: ${err.message}`);
+        alert(`❌ Error: ${err.message}`);
+      }
+    }
+
+    async function loadConversations() {
+      dbg('dbg-info', `📂 Loading conversations...`);
+      try {
+        const res = await fetch('/api/storage?action=list', {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+        });
+
+        const data = await res.json();
+        if (!data.ok || !data.conversations) {
+          throw new Error(data.error || 'Unknown error');
+        }
+
+        dbg('dbg-ok', `✅ Loaded ${data.conversations.length} conversations`);
+        const listDiv = document.getElementById('conversations-list');
+        
+        if (data.conversations.length === 0) {
+          listDiv.innerHTML = '<p class="text-sm text-gray-500">No saved conversations yet.</p>';
+          return;
+        }
+
+        listDiv.innerHTML = data.conversations.map(conv => `
+          <div class="flex items-center justify-between gap-2 p-2 bg-gray-50 rounded border border-gray-200 hover:bg-gray-100">
+            <div class="flex-1 min-w-0">
+              <p class="font-semibold text-sm truncate">${conv.title}</p>
+              <p class="text-xs text-gray-500">${conv.topic} • ${conv.messageCount} msg • ${new Date(conv.updatedAt).toLocaleString()}</p>
+            </div>
+            <button onclick="loadConversation('${conv.id}')" class="text-xs bg-blue-500 text-white px-2 py-1 rounded hover:bg-blue-600">Load</button>
+            <button onclick="deleteConversation('${conv.id}')" class="text-xs bg-red-500 text-white px-2 py-1 rounded hover:bg-red-600">Delete</button>
+          </div>
+        `).join('');
+      } catch (err) {
+        dbg('dbg-error', `Load exception: ${err.message}`);
+        document.getElementById('conversations-list').innerHTML = `<p class="text-red-500 text-sm">Error: ${err.message}</p>`;
+      }
+    }
+
+    async function loadConversation(conversationId) {
+      dbg('dbg-info', `📂 Loading conversation ${conversationId}...`);
+      try {
+        const res = await fetch(`/api/storage?action=load&id=${conversationId}`, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+        });
+
+        const data = await res.json();
+        if (!data.ok || !data.found) {
+          throw new Error(data.error || 'Conversation not found');
+        }
+
+        // Clear and reload
+        currentConversationId = data.conversationId;
+        conversationMessages = data.messages || [];
+        lastTopic = data.topic;
+        
+        chatWindow.innerHTML = ''; // Clear UI
+        conversationMessages.forEach(msg => {
+          appendMessage(msg.content, msg.role === 'user');
+        });
+
+        dbg('dbg-ok', `✅ Loaded conversation with ${conversationMessages.length} messages`);
+        document.getElementById('load-panel').classList.add('hidden');
+        alert(`✅ Loaded "${data.title}"!`);
+      } catch (err) {
+        dbg('dbg-error', `Load exception: ${err.message}`);
+        alert(`❌ Error: ${err.message}`);
+      }
+    }
+
+    async function deleteConversation(conversationId) {
+      if (!confirm('Delete this conversation?')) return;
+
+      dbg('dbg-info', `🗑️ Deleting conversation ${conversationId}...`);
+      try {
+        const res = await fetch(`/api/storage?action=delete&id=${conversationId}`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+        });
+
+        const data = await res.json();
+        if (data.ok) {
+          dbg('dbg-ok', `✅ Deleted!`);
+          loadConversations(); // Refresh list
+        } else {
+          throw new Error(data.error || 'Delete failed');
+        }
+      } catch (err) {
+        dbg('dbg-error', `Delete exception: ${err.message}`);
+        alert(`❌ Error: ${err.message}`);
+      }
+    }
+
+    function toggleLoadPanel() {
+      const panel = document.getElementById('load-panel');
+      panel.classList.toggle('hidden');
+      if (!panel.classList.contains('hidden')) {
+        loadConversations();
+      }
+    }
+
+    function newConversation() {
+      currentConversationId = generateUID();
+      conversationMessages = [];
+      chatWindow.innerHTML = '';
+      appendMessage("🎉 Hey there! I'm your expert on:\n• **Pizza 🍕** (recipes, history, styles, toppings)\n• **Basketball 🏀** (NBA, rules, players, teams)\n• **Mario Kart 64 🏎️** (characters, tracks, strategies)\n\nAsk me anything about these topics!");
+      showSuggestions('general');
+      document.getElementById('load-panel').classList.add('hidden');
+      dbg('dbg-info', `✨ New conversation started: ${currentConversationId}`);
+    }
+
     // ============================================================
     //  SUGGESTION SYSTEM — context-aware follow-up questions
     // ============================================================
@@ -274,6 +594,143 @@
         };
         suggestionsContainer.appendChild(btn);
       });
+    }
+
+    // ============================================================
+    //  SUPABASE DATA BROWSER — CRUD operations
+    // ============================================================
+    let currentTable = null;
+    let dataBrowserOpen = false;
+
+    function toggleDataBrowser() {
+      dataBrowserOpen = !dataBrowserOpen;
+      document.getElementById('data-browser').classList.toggle('open', dataBrowserOpen);
+      if (dataBrowserOpen) {
+        loadTableList();
+      }
+    }
+
+    async function loadTableList() {
+      try {
+        const res = await fetch('/api/supabase', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'LIST_TABLES' }),
+        });
+        const data = await res.json();
+        if (data.ok && data.tables) {
+          const listEl = document.getElementById('table-list');
+          listEl.innerHTML = '<h4 style="margin: 0 0 12px 0; font-size: 13px; color: #475569;">Your Tables:</h4>';
+          data.tables.forEach(table => {
+            const btn = document.createElement('button');
+            btn.className = 'table-btn';
+            btn.textContent = table;
+            btn.onclick = () => loadTabData(table);
+            listEl.appendChild(btn);
+          });
+        }
+      } catch (err) {
+        console.error('Failed to load tables:', err);
+      }
+    }
+
+    async function loadTabData(table) {
+      currentTable = table;
+      try {
+        const res = await fetch('/api/supabase', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'READ', table, limit: 100 }),
+        });
+        const data = await res.json();
+        if (data.ok && data.rows) {
+          displayTableData(table, data.rows);
+          document.getElementById('table-list').parentElement.style.display = 'none';
+          document.getElementById('table-view').style.display = 'block';
+        }
+      } catch (err) {
+        console.error('Failed to load table data:', err);
+      }
+    }
+
+    function displayTableData(table, rows) {
+      if (!rows || rows.length === 0) return;
+      const thead = document.createElement('thead');
+      const headerRow = document.createElement('tr');
+      Object.keys(rows[0]).forEach(col => {
+        const th = document.createElement('th');
+        th.textContent = col;
+        headerRow.appendChild(th);
+      });
+      const delTh = document.createElement('th');
+      delTh.textContent = 'Actions';
+      headerRow.appendChild(delTh);
+      thead.appendChild(headerRow);
+
+      const tbody = document.createElement('tbody');
+      rows.forEach(row => {
+        const tr = document.createElement('tr');
+        Object.values(row).forEach(val => {
+          const td = document.createElement('td');
+          td.textContent = JSON.stringify(val).slice(0, 50);
+          tr.appendChild(td);
+        });
+        const actionsTd = document.createElement('td');
+        const id = row.id || Object.values(row)[0];
+        actionsTd.innerHTML = `<button onclick="deleteRecord('${currentTable}', '${id}')" style="padding: 4px 8px; background: #ef4444; color: white; border: none; cursor: pointer; border-radius: 4px; font-size: 11px;">Delete</button>`;
+        tr.appendChild(actionsTd);
+        tbody.appendChild(tr);
+      });
+
+      const table = document.getElementById('data-table');
+      table.innerHTML = '';
+      table.appendChild(thead);
+      table.appendChild(tbody);
+    }
+
+    async function searchTable() {
+      const searchVal = document.getElementById('search-input').value;
+      if (!currentTable || !searchVal) return;
+      try {
+        const res = await fetch('/api/supabase', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'SEARCH', table: currentTable, query: { name: searchVal }, limit: 50 }),
+        });
+        const data = await res.json();
+        if (data.ok && data.rows) {
+          displayTableData(currentTable, data.rows);
+        }
+      } catch (err) {
+        console.error('Search failed:', err);
+      }
+    }
+
+    async function deleteRecord(table, id) {
+      if (!confirm(`Delete record ${id}?`)) return;
+      try {
+        const res = await fetch('/api/supabase', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'DELETE', table, id }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          loadTabData(table);  // reload
+        }
+      } catch (err) {
+        console.error('Delete failed:', err);
+      }
+    }
+
+    function newRecord() {
+      alert('Quick create: Send message like: "CREATE in ' + currentTable + ' with name=value"');
+    }
+
+    function backToTableList() {
+      document.getElementById('table-list').parentElement.style.display = 'block';
+      document.getElementById('table-view').style.display = 'none';
+      currentTable = null;
     }
 
     // ============================================================
@@ -395,6 +852,9 @@
         dbg('dbg-info', `━━━ REQUEST #${rid} ━━━━━━━━━━━━━━━━━━━━━━━━`);
         dbg('dbg-info', `User message (${msg.length} chars): "${msg.length > 100 ? msg.slice(0, 100) + '…' : msg}"`);
 
+        // Add to conversation history
+        conversationMessages.push({ role: 'user', content: msg, timestamp: _ts() });
+
         appendMessage(msg, true);
         input.value = '';
         btn.disabled = true;
@@ -439,17 +899,28 @@
             if (res.ok) {
                 dbg('dbg-ok', `✅ Reply OK  model=${data.model_used || '?'}  reply_len=${(data.reply||'').length}  latency=${data.latency_ms ?? elapsed}ms`);
                 setStatus(`✓ ${data.model_used || 'ok'}`, 'green');
-                appendMessage(data.reply || '(empty reply)', false, {
+                
+                const reply = data.reply || '(empty reply)';
+                
+                // Add AI response to conversation history
+                conversationMessages.push({ role: 'ai', content: reply, model: data.model_used, timestamp: _ts() });
+                
+                appendMessage(reply, false, {
                     model: data.model_used,
                     latency: data.latency_ms ?? elapsed,
                 });
+                
+                // Auto-save after each response
+                saveConversation();
+                
                 // Show context-aware suggestions based on the user's message
                 const detectedTopic = detectTopic(msg);
                 showSuggestions(detectedTopic);
             } else {
                 dbg('dbg-error', `❌ HTTP ${res.status} — ${data.reply || rawText.slice(0, 200)}`);
                 setStatus(`error ${res.status}`, 'red');
-                appendMessage(`_Error (${res.status}): ${data.reply || 'Unknown server error.'}_`);
+                const errMsg = `_Error (${res.status}): ${data.reply || 'Unknown server error.'}_`;
+                appendMessage(errMsg);
                 // Still show suggestions even on error
                 showSuggestions(detectTopic(msg));
             }
