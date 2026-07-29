@@ -1,221 +1,82 @@
 export const config = { runtime: 'edge' };
 
-// ============================================================
-//  LOGGING HELPERS — color-coded, timestamped, structured
-// ============================================================
-const _ts = () => new Date().toISOString();
-const log = {
-  info:  (...a) => console.log(  `[${_ts()}] ℹ️  INFO `, ...a),
-  ok:    (...a) => console.log(  `[${_ts()}] ✅  OK   `, ...a),
-  warn:  (...a) => console.warn( `[${_ts()}] ⚠️  WARN `, ...a),
-  error: (...a) => console.error(`[${_ts()}] ❌  ERROR`, ...a),
-  debug: (...a) => console.log(  `[${_ts()}] 🐛  DEBUG`, ...a),
-  api:   (...a) => console.log(  `[${_ts()}] 🌐  API  `, ...a),
-};
+const json = (body, status = 200) => new Response(JSON.stringify(body), {
+  status,
+  headers: {
+    'Content-Type': 'application/json',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+  },
+});
 
 export default async function handler(req) {
-  const requestId = crypto.randomUUID().slice(0, 8);
-  const debugLog = [];              // accumulate per-request debug trail
-  const pushDebug = (entry) => { debugLog.push({ t: _ts(), ...entry }); };
+  if (req.method === 'OPTIONS') return json({}, 200);
+  if (req.method !== 'POST') return json({ error: 'Method not allowed.' }, 405);
 
-  log.info(`[${requestId}] ── NEW REQUEST ─────────────────────────`);
-  log.debug(`[${requestId}] Method: ${req.method}  URL: ${req.url}`);
-
-  // ── CORS preflight ──
-  if (req.method === 'OPTIONS') {
-    log.info(`[${requestId}] CORS preflight — returning 200`);
-    return new Response(null, {
-      status: 200,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type',
-      }
-    });
-  }
+  const apiKey = process.env.GOOGLE_GEMINI_API_KEY;
+  if (!apiKey) return json({ error: 'GOOGLE_GEMINI_API_KEY is not configured in Vercel.' }, 500);
 
   try {
-    // ── Parse body ──
-    let body;
-    try {
-      body = await req.json();
-      log.debug(`[${requestId}] Parsed body:`, JSON.stringify(body).slice(0, 500));
-      pushDebug({ step: 'parse_body', ok: true, keys: Object.keys(body) });
-    } catch (parseErr) {
-      log.error(`[${requestId}] Body parse failed:`, parseErr.message);
-      pushDebug({ step: 'parse_body', ok: false, error: parseErr.message });
-      return new Response(JSON.stringify({
-        reply: 'Invalid request body — expected JSON with { "message": "..." }',
-        debug: debugLog,
-      }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+    const body = await req.json();
+    const mode = body.mode === 'image' ? 'image' : 'chat';
+
+    if (mode === 'image') {
+      const prompt = String(body.prompt || '').trim();
+      if (!prompt) return json({ error: 'An image prompt is required.' }, 400);
+
+      const allowedRatios = new Set(['1:1', '16:9', '9:16', '4:3', '3:4']);
+      const aspectRatio = allowedRatios.has(body.aspectRatio) ? body.aspectRatio : '1:1';
+      const response = await fetch('https://generativelanguage.googleapis.com/v1/models/gemini-3.1-flash-image:generateContent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            responseModalities: ['TEXT', 'IMAGE'],
+            responseFormat: { image: { aspectRatio } },
+          },
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) return json({ error: data.error?.message || 'Image generation failed.' }, response.status);
+      const parts = data.candidates?.[0]?.content?.parts || [];
+      const imagePart = [...parts].reverse().find(part => part.inlineData && !part.thought);
+      const textPart = parts.find(part => part.text && !part.thought);
+      if (!imagePart) return json({ error: 'Gemini did not return an image for this prompt.' }, 502);
+      return json({
+        text: textPart?.text || 'Here is your generated image.',
+        image: { mimeType: imagePart.inlineData.mimeType || 'image/png', data: imagePart.inlineData.data },
+        model: 'gemini-3.1-flash-image',
+      });
     }
 
-    const { message } = body;
-    if (!message || typeof message !== 'string' || message.trim().length === 0) {
-      log.warn(`[${requestId}] Empty or missing "message" field`);
-      pushDebug({ step: 'validate_message', ok: false, received: typeof message });
-      return new Response(JSON.stringify({
-        reply: 'Missing "message" field in request body.',
-        debug: debugLog,
-      }), { status: 400, headers: { 'Content-Type': 'application/json' } });
-    }
-    log.info(`[${requestId}] User message (${message.length} chars): "${message.slice(0, 120)}…"`);
-    pushDebug({ step: 'validate_message', ok: true, len: message.length });
-
-    // ── API key check ──
-    const apiKey = process.env.GOOGLE_GEMINI_API_KEY;
-    if (!apiKey) {
-      log.error(`[${requestId}] 🔑 GOOGLE_GEMINI_API_KEY is NOT set in environment!`);
-      pushDebug({ step: 'api_key_check', ok: false });
-      return new Response(JSON.stringify({
-        reply: 'Server config error: GOOGLE_GEMINI_API_KEY is not set. Add it in Vercel → Settings → Environment Variables.',
-        debug: debugLog,
-      }), { status: 500, headers: { 'Content-Type': 'application/json' } });
-    }
-    const maskedKey = apiKey.slice(0, 6) + '…' + apiKey.slice(-4);
-    log.ok(`[${requestId}] 🔑 API key present (${maskedKey}), length=${apiKey.length}`);
-    pushDebug({ step: 'api_key_check', ok: true, masked: maskedKey, len: apiKey.length });
-
-    // ── Model cascade ──────────────────────────────────────────
-    // Models from Google's 2026 quickstart + stable fallbacks.
-    // Each entry: [model_name, api_version].
-    // We try newest first, skip instantly on 404/429, move to next.
-    // TOTAL budget must stay under Vercel's 25s edge timeout!
-    const modelEntries = [
-      ['gemini-3-flash-preview',         'v1beta'],   // newest (from quickstart)
-      ['gemini-3.1-flash-lite-preview',  'v1beta'],   // lite variant
-      ['gemini-2.0-flash',               'v1beta'],   // stable 2.0
-      ['gemini-2.0-flash',               'v1'    ],   // stable 2.0, older endpoint
-      ['gemini-1.5-flash',               'v1'    ],   // legacy fallback
-    ];
-    log.info(`[${requestId}] Will try ${modelEntries.length} model+version combos (no retry waits to beat 25s timeout)`);
-    modelEntries.forEach(([m, v]) => log.info(`[${requestId}]   → ${m} (${v})`));
-
-    let lastError = '';
-    const PER_CALL_TIMEOUT_MS = 8000;    // abort any single API call after 8s
-
-    // ── System instruction: Generalist / Master of all knowledge ──
-    const systemInstruction = {
-      parts: [{ text:
-        `You are a friendly, highly capable assistant and a MASTER of general knowledge across all domains.
-
-Capabilities & Tone:
-- Provide accurate, concise, and helpful answers on any topic (science, history, coding, math, culture, practical how-tos, etc.).
-- Adapt tone to the user's style: formal, casual, technical, or instructional as appropriate.
-- When helpful, include examples, step-by-step instructions, code snippets, or references.
-- Ask concise clarifying questions if the user's request is ambiguous.
-- Prioritize user safety: refuse to assist with illegal, unsafe, or harmful requests and explain briefly why.
-
-Response Guidelines:
-1. Treat every user query as potentially any topic — do not assume a narrow domain.
-2. Be concise, then offer to expand or provide deeper explanations, examples, or references.
-3. Use markdown formatting for clarity (code blocks, lists, tables) when relevant.
-4. Offer follow-up suggestions or related actions the user might find useful.
-5. If a factual claim is made, cite sources or note uncertainty when appropriate.
-
-Behavior:
-- Never claim knowledge you don't have; if unsure, state uncertainty and suggest ways to verify.
-- Be helpful and proactive: suggest clarifying questions, sample prompts, or next steps.
-- Maintain user privacy: do not request sensitive personal data unless strictly necessary and explain why.
-
-You are the user's generalist assistant — expert, polite, and helpful on any topic.`
-      }]
-    };
-
-    // ── Try each model+version combo ──
-    for (let i = 0; i < modelEntries.length; i++) {
-      const [model, apiVersion] = modelEntries[i];
-      const attempt = i + 1;
-      log.api(`[${requestId}] ── Attempt ${attempt}/${modelEntries.length}  model=${model}  version=${apiVersion}`);
-      pushDebug({ step: 'model_attempt', attempt, model, apiVersion });
-
-      try {
-        const apiUrl = `https://generativelanguage.googleapis.com/${apiVersion}/models/${model}:generateContent?key=${apiKey}`;
-        log.debug(`[${requestId}] POST …/${apiVersion}/models/${model}:generateContent?key=***`);
-
-        const payload = {
-          system_instruction: systemInstruction,
-          contents: [{ parts: [{ text: message }] }],
-        };
-
-        // AbortController to enforce per-call timeout
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), PER_CALL_TIMEOUT_MS);
-
-        const t0 = Date.now();
-        let response;
-        try {
-          response = await fetch(apiUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-            signal: controller.signal,
-          });
-        } finally {
-          clearTimeout(timer);
-        }
-        const elapsed = Date.now() - t0;
-
-        log.api(`[${requestId}] Response: status=${response.status} (${elapsed}ms)`);
-        pushDebug({ step: 'api_response', model, apiVersion, status: response.status, ms: elapsed });
-
-        let data;
-        try {
-          data = await response.json();
-          log.debug(`[${requestId}] Response keys: ${Object.keys(data).join(', ')}`);
-        } catch (jsonErr) {
-          log.error(`[${requestId}] JSON parse failed:`, jsonErr.message);
-          pushDebug({ step: 'api_json_parse', model, ok: false, error: jsonErr.message });
-          lastError = `JSON parse error from ${model}`;
-          continue;
-        }
-
-        // ── Success ──
-        if (response.ok && data.candidates?.[0]?.content?.parts?.[0]?.text) {
-          const replyText = data.candidates[0].content.parts[0].text;
-          log.ok(`[${requestId}] ✅ SUCCESS  model=${model} (${apiVersion})  reply_len=${replyText.length}  ${elapsed}ms`);
-          pushDebug({ step: 'success', model, apiVersion, reply_len: replyText.length, ms: elapsed });
-
-          return new Response(JSON.stringify({
-            reply: replyText,
-            model_used: model,
-            latency_ms: elapsed,
-            debug: debugLog,
-          }), { headers: { 'Content-Type': 'application/json' } });
-        }
-
-        // ── Failure — log detail and move to next model instantly ──
-        lastError = data.error?.message || JSON.stringify(data).slice(0, 300);
-        const code = data.error?.code || response.status;
-        log.warn(`[${requestId}] Model ${model} (${apiVersion}) → ${code}: ${lastError.slice(0, 200)}`);
-        pushDebug({ step: 'model_rejected', model, apiVersion, code, error: lastError });
-        continue;
-
-      } catch (fetchErr) {
-        const errMsg = fetchErr.name === 'AbortError'
-          ? `Timed out after ${PER_CALL_TIMEOUT_MS}ms` : fetchErr.message;
-        log.error(`[${requestId}] Fetch exception on ${model} (${apiVersion}): ${errMsg}`);
-        pushDebug({ step: 'fetch_exception', model, apiVersion, error: errMsg });
-        lastError = errMsg;
-        continue;
-      }
+    const message = String(body.message || '').trim();
+    if (!message) return json({ error: 'A message is required.' }, 400);
+    const history = Array.isArray(body.history) ? body.history.slice(-12) : [];
+    const contents = history
+      .filter(item => item && ['user', 'assistant'].includes(item.role) && item.content)
+      .map(item => ({ role: item.role === 'assistant' ? 'model' : 'user', parts: [{ text: String(item.content) }] }));
+    if (!contents.length || contents.at(-1)?.parts?.[0]?.text !== message) {
+      contents.push({ role: 'user', parts: [{ text: message }] });
     }
 
-    // ── All models exhausted ──
-    log.error(`[${requestId}] ❌ ALL ${modelEntries.length} MODELS FAILED.  Last error: ${lastError}`);
-    pushDebug({ step: 'all_models_failed', error: lastError });
+    const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+      body: JSON.stringify({
+        contents,
+        systemInstruction: { parts: [{ text: 'You are a capable, friendly general assistant. Be accurate, practical, concise by default, and format responses clearly with Markdown when useful.' }] },
+      }),
+    });
 
-    return new Response(JSON.stringify({
-      reply: `All models failed. Last error: ${lastError}`,
-      debug: debugLog,
-    }), { status: 500, headers: { 'Content-Type': 'application/json' } });
-
-  } catch (err) {
-    log.error(`[${requestId}] 💥 UNHANDLED EXCEPTION:`, err.message, err.stack);
-    pushDebug({ step: 'unhandled_exception', error: err.message, stack: err.stack });
-    return new Response(JSON.stringify({
-      reply: `Server error: ${err.message}`,
-      debug: debugLog,
-    }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+    const data = await response.json();
+    if (!response.ok) return json({ error: data.error?.message || 'Gemini request failed.' }, response.status);
+    const reply = data.candidates?.[0]?.content?.parts?.map(part => part.text || '').join('').trim();
+    if (!reply) return json({ error: 'Gemini returned an empty response.' }, 502);
+    return json({ reply, model: 'gemini-3.6-flash' });
+  } catch (error) {
+    return json({ error: error?.message || 'Unexpected server error.' }, 500);
   }
 }
